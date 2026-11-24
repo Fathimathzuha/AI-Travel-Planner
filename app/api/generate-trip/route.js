@@ -1,4 +1,32 @@
+const sleep = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
+async function generateContentWithRetry(model, prompt) {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await model.generateContent(prompt);
+    } catch (error) {
+      const status = error.status || error.statusCode;
+
+      if (
+        (status !== 503 && status !== 429) ||
+        attempt === maxAttempts
+      ) {
+        throw error;
+      }
+
+      const delay = 1000 * Math.pow(2, attempt - 1);
+
+      console.log(
+        `Gemini temporarily unavailable. Retrying in ${delay}ms...`
+      );
+
+      await sleep(delay);
+    }
+  }
+}
 export async function POST(request) {
   try {
     const { GoogleGenerativeAI } = await import("@google/generative-ai");
@@ -234,10 +262,10 @@ Keep recommendations realistic, useful, concise and personalized.
 Clearly distinguish estimates, suggestions and verified information.
 `;
 
-    const result = await model.generateContent(prompt);
-    const itinerary = result.response.text();
+  const result = await generateContentWithRetry(model, prompt);
+  const itinerary = result.response.text();
 
-    return Response.json({ itinerary });
+  return Response.json({ itinerary });
   } catch (error) {
     console.error("Trip generation error:", error);
 
